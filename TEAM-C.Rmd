@@ -1,0 +1,748 @@
+---
+title: "TEAM-C"
+author: "Reenu, Tom, Lee, Erik,"
+date: "7 April 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Advanced Analytics - Assignment 2 
+# analyses
+```{r, include=FALSE}
+library(stats)
+library(ggplot2)
+library(plyr)
+library(gmodels)
+library(class)
+library(psych)
+library(corrplot)
+library(regclass)
+library(leaps)
+library(bestglm)
+library(e1071)
+library(stringr)
+library(rpart)
+library(rattle)
+library(tidyverse)
+library(caret)
+library(rpart)
+library(rpart.plot)
+
+
+#importing the data from CSV file ---decision trees
+mushrooms<- read.csv("DATA/mushrooms.csv")
+#importing the data from CSV file ---Knn
+wine <- read.csv("DATA/wine.data", stringsAsFactors = FALSE, header = FALSE)
+
+#importing the data from CSV file ---regression
+#Importing red wine quality csv file.
+redwine<- read.csv("DATA/winequality-red.csv")
+redwine <- read.csv("DATA/winequality-red.csv", sep= ";")
+#Importing white wine quality csv file
+whitewine<- read.csv("DATA/winequality-white.csv")
+whitewine <- read.csv("DATA/winequality-white.csv", sep=";")
+
+#importing the data from CSV file ---Kmeans
+online_intention <- read.csv("DATA/online_shoppers_intention.csv")
+```
+
+
+
+# Decision tree 
+#-----------------------------------------------------------
+#description
+This data set includes descriptions of hypothetical samples corresponding to 23 species of gilled mushrooms in the Agaricus and Lepiota Family (pp. 500-525).  Each species is identified as definitely edible, definitely poisonous, or of unknown edibility and not recommended.  This latter class was combined with the poisonous one.  The Guide clearly states that there is no simple rule for determining the edibility of a mushroom; no rule like ``leaflets three, let it be'' for Poisonous Oak and Ivy.
+Number of Instances: 8124
+Number of Attributes: 22 (all nominally valued)
+Attribute Information: (classes: edible=e, poisonous=p)
+1. cap-shape:                bell=b,conical=c,convex=x,flat=f, knobbed=k,sunken=s
+2. cap-surface:              fibrous=f,grooves=g,scaly=y,smooth=s
+3. cap-color:        brown=n,buff=b,cinnamon=c,gray=g,green=r, pink=p,purple=u,red=e,white=w,yellow=y
+4. bruises?:                 bruises=t,no=f
+5. odor:                     almond=a,anise=l,creosote=c,fishy=y,foul=f, musty=m,none=n,pungent=p,spicy=s
+6. gill-attachment:          attached=a,descending=d,free=f,notched=n
+7. gill-spacing:             close=c,crowded=w,distant=d
+8. gill-size:                broad=b,narrow=n
+9. gill-color:               black=k,brown=n,buff=b,chocolate=h,gray=g,
+green=r,orange=o,pink=p,purple=u,red=e,white=w,yellow=y
+10. stalk-shape:              enlarging=e,tapering=t
+11. stalk-root:               bulbous=b,club=c,cup=u,equal=e,rhizomorphs=z,rooted=r,missing=?
+12. stalk-surface-above-ring: fibrous=f,scaly=y,silky=k,smooth=s
+13. stalk-surface-below-ring: fibrous=f,scaly=y,silky=k,smooth=s
+14. stalk-color-above-ring:   brown=n,buff=b,cinnamon=c,gray=g,orange=o,pink=p,red=e,white=w,yellow=y
+15. stalk-color-below-ring:   brown=n,buff=b,cinnamon=c,gray=g,orange=o, pink=p,red=e,white=w,yellow=y
+16. veil-type:                partial=p,universal=u
+17. veil-color:               brown=n,orange=o,white=w,yellow=y
+18. ring-number:              none=n,one=o,two=t
+19. ring-type:                cobwebby=c,evanescent=e,flaring=f,large=l, one=n,pendant=p,sheathing=s,zone=z
+20. spore-print-color:        black=k,brown=n,buff=b,chocolate=h,green=r,orange=o,purple=u,white=w,yellow=y
+21. population:               abundant=a,clustered=c,numerous=n, scattered=s,several=v,solitary=y
+22. habitat:                  grasses=g,leaves=l,meadows=m,paths=p, urban=u,waste=w,woods=d
+
+from the data set we am going to try predict the edibility of a mushroom
+fist we must look and investigate the dataset to try identify what may need to be changed
+```{r}
+#inspect the data
+str(mushrooms)
+summary(mushrooms)
+
+#Count NAs
+sapply(mushrooms, function(x){sum(is.na(x))})
+
+#count blank entries
+sapply(mushrooms, function(x){sum(x=='', na.rm=T)})
+```
+
+Rename the variables. We have to give names to each variable and then specify the category for each variable.This adds meaning tho what we are doing but it is not neccessary for what we need to do
+```{r, include=FALSE}
+colnames(mushrooms) <- c("edibility", "cap_shape", "cap_surface", 
+                        "cap_color", "bruises", "odor", 
+                        "gill_attachement", "gill_spacing", "gill_size", 
+                        "gill_color", "stalk_shape", "stalk_root", 
+                        "stalk_surface_above_ring", "stalk_surface_below_ring", "stalk_color_above_ring", 
+                        "stalk_color_below_ring", "veil_type", "veil_color", 
+                        "ring_number", "ring_type", "spore_print_color", 
+                        "population", "habitat")
+
+# Defining the levels for the categorical variables 
+## We make every variable into a factor so they are the same and easy to work with
+mushrooms <- mushrooms %>% map_df(function(.x) as.factor(.x))
+
+## We redefine each of the category for each of the variables
+levels(mushrooms$edibility) <- c("edible", "poisonous")
+levels(mushrooms$cap_shape) <- c("bell", "conical", "flat", "knobbed", "sunken", "convex")
+levels(mushrooms$cap_color) <- c("buff", "cinnamon", "red", "gray", "brown", "pink", 
+                                "green", "purple", "white", "yellow")
+levels(mushrooms$cap_surface) <- c("fibrous", "grooves", "scaly", "smooth")
+levels(mushrooms$bruises) <- c("no", "yes")
+levels(mushrooms$odor) <- c("almond", "creosote", "foul", "anise", "musty", "none", "pungent", "spicy", "fishy")
+levels(mushrooms$gill_attachement) <- c("attached", "free")
+levels(mushrooms$gill_spacing) <- c("close", "crowded")
+levels(mushrooms$gill_size) <- c("broad", "narrow")
+levels(mushrooms$gill_color) <- c("buff", "red", "gray", "chocolate", "black", "brown", "orange", 
+                                 "pink", "green", "purple", "white", "yellow")
+levels(mushrooms$stalk_shape) <- c("enlarging", "tapering")
+levels(mushrooms$stalk_root) <- c("missing", "bulbous", "club", "equal", "rooted")
+levels(mushrooms$stalk_surface_above_ring) <- c("fibrous", "silky", "smooth", "scaly")
+levels(mushrooms$stalk_surface_below_ring) <- c("fibrous", "silky", "smooth", "scaly")
+levels(mushrooms$stalk_color_above_ring) <- c("buff", "cinnamon", "red", "gray", "brown", "pink", 
+                                             "green", "purple", "white", "yellow")
+levels(mushrooms$stalk_color_below_ring) <- c("buff", "cinnamon", "red", "gray", "brown", "pink", 
+                                             "green", "purple", "white", "yellow")
+levels(mushrooms$veil_type) <- "partial"
+levels(mushrooms$veil_color) <- c("brown", "orange", "white", "yellow")
+levels(mushrooms$ring_number) <- c("none", "one", "two")
+levels(mushrooms$ring_type) <- c("evanescent", "flaring", "large", "none", "pendant")
+levels(mushrooms$spore_print_color) <- c("buff", "chocolate", "black", "brown", "orange", 
+                                        "green", "purple", "white", "yellow")
+levels(mushrooms$population) <- c("abundant", "clustered", "numerous", "scattered", "several", "solitary")
+levels(mushrooms$habitat) <- c("wood", "grasses", "leaves", "meadows", "paths", "urban", "waste")
+
+```
+check to make sure that all the variables are indeed changed to factors
+```{r}
+#check to make sure that all the variables are indeed changed to factors
+glimpse(mushrooms)
+#From the the results we can see that every variable is marke dwith a <fct> which states they are all indeed changed to factors
+
+#every variable we have is categorical, so we need to see the number of categories we are talking about
+numClass <- function(x){
+  x <- length(levels(x))
+}
+x <- mushrooms %>% map_dbl(function(.x) numClass(.x)) %>% as_tibble() %>% 
+  rownames_to_column() %>% arrange(desc(value))
+colnames(x) <- c("Variable name", "Number of levels")
+print(x)
+
+```
+From the results we can see that gill_color has the most levels with 12 followed by cap_color and both stalk_colors
+
+the veil type only has one categorical factor therefore its completely useless to us and may even negatively effect the outcome of the modelling stage.So i had to take away the column
+```{r}
+mushrooms <- mushrooms %>% select(- veil_type)
+#i then have to see if there is any missing data as algorithm will not work otherwise
+map_dbl(mushrooms, function(.x) {sum(is.na(.x))})
+#from the results we can see that there is luckily no data missing
+```
+for us to continue with the model i have to split the data into test and train sets
+```{r}
+set.seed(1810)
+mushsample <- caret::createDataPartition(y = mushrooms$edibility, times = 1, p = 0.8, list = FALSE)
+trainMush <- mushrooms[mushsample, ]
+testMush <- mushrooms[-mushsample, ]
+# now i can check the splits in regards to the predicted variable
+#original
+round(prop.table(table(mushrooms$edibility)), 2)
+#train
+round(prop.table(table(trainMush$edibility)), 2)
+#test
+round(prop.table(table(testMush$edibility)), 2)
+```
+#############      Start Regression Tree    ####################
+```{r}
+#because of the amount of categorical variables regression trees are the ideal amount
+set.seed(1810)
+regTree <- rpart(edibility ~ ., data = trainMush, method = "class")
+regTree
+#
+caret::confusionMatrix(data=predict(regTree, type = "class"), 
+                       reference = trainMush$edibility, 
+                       positive="edible")
+```
+A confusion/error matrix that lets us know what the model is getting right and what it is getting wrong / errors its making. it also states how accurate the algorithm is so you can see whether the the algorithm is worthwhile and results are trustworthy
+
+from the results it shows us that 41 mushrooms were put as edible but they were actually poisonous
+i will us cp and penalty matrix parameters in order to give out predictions.
+the best way to change this is to set up a penalty matrix in the rpart of the function
+the penalty matrix penalizes the higher order differences to allow for a more accurate result
+```{r}
+penalty_matrix <- matrix(c(0, 1, 10, 0), byrow = TRUE, nrow = 2)
+penalty_mod_tree <- rpart(edibility ~ ., data = trainMush, method = "class", 
+                            parms = list(loss = penalty_matrix))
+
+caret::confusionMatrix(data=predict(penalty_mod_tree, type = "class"), 
+                       reference = trainMush$edibility, 
+                       positive="edible")
+```
+introducing the penalty matrix gives out a perfect prediction
+100% accuracy with 3367 edible and 3133 poisonous
+
+using a cp parameter also increases the accuracy of the model
+the cp model basically controls and measures the complexity of the tree based off how large the user may want it, in order to get the cp we need to idenify the cross validation errors, which is basically a technique used to help estimate the test error of a predictive model such as the one we are implimenting
+we start off with a very deep tree that can be pruned later
+```{r}
+regTree <- rpart(edibility ~ ., data = trainMush, 
+                    method = "class", cp = 0.00001)
+```
+to use cp we have to to identify  the cp with the smallest cross validation error which can be doen using printcp and plotcp
+```{r}
+#printcp
+printcp(regTree)
+#the results show that the smallest cp happened after the 5th split
+plotcp(regTree)
+regTree$cptable[which.min(regTree$cptable[, "xerror"]), "CP"]
+```
+pruning is done to trim down the tree to try make is as simple as possible in order to reduce the overallcomplexity of the tree
+its mostly done in order to limit the chances of overfitting a tree and making it useless to user
+now we can start pruning the tree with the cp that gives lowest cross validation error
+```{r}
+bestcp <- round(regTree$cptable[which.min(regTree$cptable[, "xerror"]), "CP"], 4)
+regTree_pruned <- prune(regTree, cp = bestcp)
+
+#now we can have a look at the tree as it stands now
+rpart.plot(regTree_pruned, extra = 104, box.palette = "GnBu", 
+           branch.lty = 3, shadow.col = "gray", nn = TRUE)
+
+#now we have to see how the model performs on the train data
+#table(trainMush$edibility, predict(regTree, type="class"))
+
+caret::confusionMatrix(data=predict(regTree_pruned, type = "class"), 
+                       reference = trainMush$edibility, 
+                       positive="edible")
+```
+we can see that there are no poisonous values that should have been edible and visa versa.
+3367 edible
+3133 poisonous
+```{r}
+testTree <- predict(regTree, newdata = testMush)
+caret::confusionMatrix(data = predict(regTree, newdata = testMush, type = "class"), 
+                       reference = testMush$edibility, 
+                       positive = "edible")
+
+```
+from the results we can now see that we have a near enough perfect accuracy on the result on the training accuracy
+841 edible mushrooms and 783 poisonous
+the reason why i chose a regression tree was based off the amount of categorical variables within the dataset
+
+
+
+
+# Knn 
+#-----------------------------------------------------------
+data source: https://archive.ics.uci.edu/ml/datasets/Wine
+178 rows, 14 columns on chemical analysis of wines grown in the same region in Italy but derived from three different cultivars
+```{r}
+#exploring the data
+str(wine)
+names(wine) <- c("Class","Alcohol","Malic_acid","Ash","Alcalinity_of_ash","Magnesium",
+                 "Total_phenols","Flavanoids","Nonflavanoid_phenols",
+                 "Proanthocyanins","Colour_intensity","Hue","OD280/OD315","Proline")
+
+#table of wine class
+table(wine$Class)
+# Show classes as percent of total
+round(prop.table(table(wine$Class)) * 100, digits = 1)
+```
+create normalization function
+```{r}
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+# normalize the data so all numeric values are between 0 and 1
+wine_norm <- as.data.frame(lapply(wine[2:14], normalize))
+
+# confirm that normalisation worked
+summary(wine_norm$Ash)
+```
+separate the data into two groups to be used for training and test sets
+```{r}
+set <- createDataPartition(wine$Class, p=0.6, list=FALSE)
+# create training and test data
+wine_train <- wine_norm[set, ]
+wine_test <- wine_norm[-set, ]
+
+# create labels for training and test data
+wine_train_labels <- wine[set, 1]
+wine_test_labels <- wine[-set, 1]
+```
+Step 3: Training a model on the data ----
+an initial K value of 3 is used, as it is common to use a value between 3 and 9
+the value for K should be an odd number to avoid draws in the classification
+```{r}
+wine_test_pred <- knn(train = wine_train, test = wine_test,
+                      cl = wine_train_labels, k=3)
+
+## Step 4: Evaluating model performance 
+
+# Create the cross tabulation of predicted vs. actual
+confusionMatrix(table(wine_test_pred,wine_test_labels))
+```
+using 3 nearest neighbours the accuracy for this training and test set is 92.96%
+note: this result can change each time as the createDataPartition function splits the data randomly
+```{r}
+# use the scale() function to z-score standardize a data frame
+wine_z <- as.data.frame(scale(wine[-1]))
+# confirm that the transformation was applied correctly
+summary(wine_z$Alcohol)
+
+# create training and test datasets
+wine_train1 <- wine_z[set, ]
+wine_test1 <- wine_z[-set, ]
+
+# re-classify test cases
+wine_test_pred22 <- knn(train = wine_train1, test = wine_test1,
+                      cl = wine_train_labels, k=3)
+
+# Create the cross tabulation of predicted vs. actual
+confusionMatrix(table(wine_test_pred22,wine_test_labels))
+```
+the accuracy for this training and test set using z-scores is 94.37%, which is almost the same as previously.
+using z-scores will usually improve the accuracy of the algorithm, but in this case it had no effect.
+this is most likely due to the size of the dataset being not enough to show a difference when z-score is used.
+
+try several different values of k to find the highest accuracy, and compare to the previous value of 94.37% where k=3.
+```{r}
+wine_test_pred5 <- knn(train = wine_train, test = wine_test,cl = wine_train_labels, k=5)
+confusionMatrix(table(wine_test_pred5,wine_test_labels))
+```
+using a k value of 5, the accuracy was 94.37%
+```{r}
+wine_test_pred7 <- knn(train = wine_train, test = wine_test,cl = wine_train_labels, k=7)
+confusionMatrix(table(wine_test_pred7,wine_test_labels))
+```
+using a k value of 7, the accuracy was 95.77%
+## k=5 and k=9 returned the highest accuracy from the values we tested.
+
+
+
+
+# Regression
+#------------------------------------------
+Regresssion- We are implementing the linear regression for which the Wine Quality datasets has taken from following link(https://archive.ics.uci.edu/ml/datasets/wine+quality).
+This has two different dataset, one is for white wine and another one is for red wine.The two datasets are related to red and white variants of the Portuguese "Vinho Verde" wine.For creating the model, both datasets are merges together two carry out a combined analysis.
+Red wine data has 1,599 observation and quality variable has levels from 3 to 8. White wine data has 4898 observation and quality variable has levels from 3 to 9. 
+Combined red and wine data has 6,497 observation and has levels from 3 to 9.
+Datasets contains 12 numerical fields which are #1 - fixed acidity #2 - volatile acidity #3 - citric acid 4 - residual sugar #5 - chlorides #6 - free sulfur dioxide #7 - total sulfur dioxide #8 - density #9 - pH #10 - sulphates #11 - alcohol Output variable (based on sensory data): 12 - quality (score between 0 and 10)
+
+```{r}
+#Merging both red and white wine csv for analysis.
+
+wine_redwhite <- rbind(whitewine, redwine)
+#checking the calls of merged file.
+class(wine_redwhite) # its outputted as a data frame
+
+#Viewing the merged file
+str(wine_redwhite) # Str results says the dataset is formatted the way it required for analysis.
+summary(wine_redwhite) 
+
+```
+Red wine data has 1,599 observation and quality variable has levels from 3 to 8. White wine data has 4898 observation and quality variable has levels from 3 to 9.#Combined red and wine data has 6,497 observation and has levels from 3 to 9.
+```{r}
+#First Doing some initail exploratory data analysis to get a sense of data
+#Checking for missing values in merged dataset.
+colSums(is.na(wine_redwhite)) # no missing value found
+```
+#Correlation
+Exploring Relationship among all features using correaltion matrix
+```{r}
+wine_corr <- cor(wine_redwhite)
+summary(wine_corr)
+#Plotting the scallertplot matrix to visualize using the corplot function of corplot libarary.
+corrplot(wine_corr,method="number") 
+```
+From the scatterplot matrix, we observed that there is not a linear relationship between the Quality(dependent) and the Predictors(independnet variables).
+```{r}
+#checking Skewness and kurtosis of dataset using the describe function of psych library.
+describe(wine_redwhite) 
+```
+From describe function output, we observe that skewness coefficient for quality is 0.19 and kurtosis is 0.23 which shows that the distribution is approximately symmetric.
+```{r}
+#histrogram for Quality
+hist_2 <- hist(wine_redwhite$quality, breaks = 5, col ="lightblue", xlab = "Quality ", main= " Histogram of Quality rating")
+
+table(wine_redwhite$quality) #table to get frquency of different qualities in dataset
+
+```
+Rather than using the entire dataset as its very larges dataset This is one of the reasons we need to use training and test set separation.
+After we have trained our model, we should test it on fresh examples so that we can avoid problems like overfitting. We can also estimate how well our model is performing given that it is facing new inputs. Based on the performance, we can proceed on developing our system further.
+so i am spliting the data into a training set and a testing set.
+As their names imply, the training set is used to train and build the model, and then this model is tested on the testing set
+Sampling the data randomly using seed and sample function
+
+```{r}
+set.seed(1235)
+wine_redwhite <- wine_redwhite[sample(nrow(wine_redwhite)),]
+
+#Now Selecting 50% of data as sample from total number of rows of the data
+split <- floor(nrow(wine_redwhite)/2)
+
+wine_train <- wine_redwhite[0:split,] # Training Data
+wine_test <- wine_redwhite[(split+1):(nrow(wine_redwhite)-1),]# Testing Data
+```
+First Regression Model using multiple variable
+Treating quality as a continuous variable, Estimating a multiple linear regression model.
+Creating the initial multinominal Linear Model with quality as a continuous dependent variable and Model with all other variables as predictors
+
+```{r}
+#
+lm1 <- lm(as.numeric(quality) ~ alcohol + volatile.acidity + free.sulfur.dioxide + sulphates + total.sulfur.dioxide + density + residual.sugar+ fixed.acidity + citric.acid+ chlorides + pH, data=wine_train)
+
+summary(lm1) #Evaluation calculates Residual standard error = 0.74, Multi R squared = 0.28, and Adj R squared = 0.28
+confint(lm1, level=0.95) # checking the model on 95% CI
+
+```
+ANOVA's null hypothesis is whether group mean values of the dependent variable are not significantly different, while an alternative hypothesis is just that at least one of the factor level forms a group of observations which mean value is different from overall mean.
+So using anova on this multiple regression helps us indentifying the variable which are not significant for the  model.
+```{r}
+anova(lm1) #Anova evaluation finds Citric Acid, Chlorides, and Fixed acidity are not significant in this model.
+#ploting from model.
+plot(lm1)
+#Testing the prediction model
+prediction1 <- predict(lm1, newdata = wine_test)
+```
+testing the data with fresh value to prdict the quailty of wine
+```{r}
+#testing the data with fresh value to prdict the quailty of wine
+data123 <- data.frame(alcohol=10, volatile.acidity = .28, free.sulfur.dioxide = 34, sulphates =.48, total.sulfur.dioxide =120, density =.9856, residual.sugar=9, fixed.acidity = 7.2, citric.acid =.28, chlorides = .045, pH =3.02)
+predict(lm1, data123)
+```
+Graphical Analysis of Linear Regression assumption
+Assumption 1- residuals plot can be used to assess the assumption that the variables have a linear relationship
+```{r}
+
+unstandardizedPredicted <- predict(lm1) # predicting the unstandardize quailty value using the above train model
+unstandardizedResiduals <- resid(lm1) # calcuating the unstandardardize residuals values.
+#calculating standardized values using the formula.
+standardizedPredicted <- (unstandardizedPredicted - mean(unstandardizedPredicted)) / sd(unstandardizedPredicted)
+standardizedResiduals <- (unstandardizedResiduals - mean(unstandardizedResiduals)) / sd(unstandardizedResiduals)
+#creating standardized residuals plot
+plot(standardizedPredicted, standardizedResiduals, main = "Standardized Residuals Plot", xlab = "Standardized Predicted Values", ylab = "Standardized Residuals")
+#adding horizontal line to above plot
+abline(0,0)
+```
+Explanation of above Residual plot- values that are close to the horizontal line are predicted well. The points above the line are underpredicted and the ones below the line are overpredicted. 
+The linearity assumption is supported to the extent that the amount of points scattered above and below the line is equal.
+
+
+Residual histogram- using a histogram we may assess the assumption that the residuals are normally distributed
+```{r}
+hist(standardizedResiduals, freq = FALSE)#creating residuals histogram
+
+curve(dnorm, add = TRUE)
+```
+adding normal curve. it shows that Points in the residual plot are dispersed randomly or normally distributed.
+
+I am creating one more Linear Model 2 using only Volatile Acidity, Alcohol, free suphur dioxide and Sulphates as independent variables as linear model one was not significant enough
+```{r}
+lm2 <-lm(as.numeric(quality)~ alcohol + free.sulfur.dioxide + sulphates + volatile.acidity, data=wine_train)
+
+summary(lm2)#
+confint(lm2, level=0.95) # 
+anova(lm2) #
+plot(lm2)
+```
+Residual standard error = 0.74, Multi Rsquared = 0.28, and Adj R sqaured = 0.27
+checking the 95 CI
+Anova indicates th all variables are significant in this model.
+An evaluation of both Linear Model 1 and Linear Model 2 concludes that neither model is well suited for predicting this data
+
+predicting the quality of wine with second model with fresh values of predictors
+```{r}
+#Testing the prediction model
+prediction2 <- predict(lm2, newdata = wine_test)
+#predicting the quality of wine with second model with fresh values of predictors
+data1234 <- data.frame(alcohol=10, free.sulfur.dioxide = 34, sulphates =.48, volatile.acidity =.19)
+predict(lm2,data1234)
+```
+Root mean square Error of linear model
+```{r}
+#Root mean square Error of linear model
+rmse <- function(error)
+{
+  sqrt(mean(error^2))
+}
+
+error <- lm2$residuals  # same as data$Y - predictedY
+predictionRMSE <- rmse(error) 
+predictionRMSE 
+```
+Error is 74.12%- It seems that Liner regression is underestimating the true nature of the relationship and interesting things are being overlooked.
+An evaluation of both Linear Model 1 and Linear Model 2 concludes that neither model is well suited for predicting this data.
+
+
+
+
+# K means
+#---------------------------------------
+the technique used for clustering is the K-means and the description of the dataset for this analysis is Online Shoppers Intention that was obtained in the next link (https://archive.ics.uci.edu/ml/datasets.html)
+
+##Description of dataset
+The dataset consists of 10 numerical and 8 categorical attributes.
+"Administrative", "Administrative Duration", "Informational", "Informational Duration", "Product Related" and "Product Related Duration" represent the number of different types of pages visited by the visitor in that session and total time spent in each of these page categories. The values of these features are derived from the URL information of the pages visited by the user and updated in real time when a user takes an action, e.g. moving from one page to another. The "Bounce Rate", "Exit Rate" and "Page Value" features represent the metrics measured by "Google Analytics" for each page in the e-commerce site. The value of "Bounce Rate" feature for a web page refers to the percentage of visitors who enter the site from that page and then leave ("bounce") without triggering any other requests to the analytics server during that session. The value of "Exit Rate" feature for a specific web page is calculated as for all pageviews to the page, the percentage that were the last in the session. The "Page Value" feature represents the average value for a web page that a user visited before completing an e-commerce transaction. The "Special Day" feature indicates the closeness of the site visiting time to a specific special day (e.g. Mother’s Day, Valentine's Day) in which the sessions are more likely to be finalized with transaction. The value of this attribute is determined by considering the dynamics of e-commerce such as the duration between the order date and delivery date. For example, for Valentina’s day, this value takes a nonzero value between February 2 and February 12, zero before and after this date unless it is close to another special day, and its maximum value of 1 on February 8. The dataset also includes operating system, browser, region, traffic type, visitor type as returning or new visitor, a Boolean value indicating whether the date of the visit is weekend, and month of the year.
+
+# FIRST CLUSTER ANALYSIS
+
+Due to the heuristic nature of k-means, making any changes could have a different results, for that reason, we try a cluster analysis more than once to test the robustness of our findings
+```{r}
+#exploring and preparing the data
+str(online_intention)
+summary(online_intention)
+```
+as we can see there is not NA values 
+but there are four categorical values - Month, VisitorType, Weekend and Revenue.
+DUMMY CODING FOR CATEGORICAL VARIABLES
+```{r, include=FALSE}
+#to hold the original data, we create a new variable to preparing the data
+intention <- online_intention
+#Data	preparation	–	dummy	coding for categorical variable
+#visitor type
+intention$Return_visitor	<-	ifelse(intention$VisitorType	==	"Returning_Visitor",	1,	0) 
+intention$New_visitor	<-	ifelse(intention$VisitorType	==	"New_Visitor",	1,	0)
+#weekend
+intention$no_weekend	<-	ifelse(intention$Weekend	==	"FALSE",	1,	0)
+#Revenue
+intention$no_renevue	<-	ifelse(intention$Revenue	==	"FALSE",	1,	0)
+#month
+#changing the values from months to number of month,
+#changing the colum type from factor to numeric. due to K-means use numerical value
+intention$Month <- factor(intention$Month, levels= c("Feb","Mar", "May", 
+                                                             "June","Jul", "Aug", 
+                                                             "Sep","Oct", "Nov", "Dec"),
+                              labels = c("2","3","5","6","7","8","9","10","11","12"))
+intention$Month <- as.numeric(as.character(intention$Month))
+table(intention$Month)
+#as K-means should be used only numerics values
+#removing the categorical variables that were become to numeric in the step before.
+intention <- intention[c(-16,-17,-18)]
+```
+```{r}
+#To	apply	z-score	standardization	to	the	interests	data	frame,	
+#we	can	use	the	scale() function	with	lapply()
+intention_z	<-	as.data.frame(lapply(intention,	scale))
+#checking that the standarization is correct with the 5th columns 
+summary(intention_z[1:5])
+#All variables are numerical for the clustering analysis
+#this second subset is for SECOND CLUSTER ANALYSIS when using any categorical variable
+intention_z2 <- intention_z[c(-11,-16,-17,-18,-19)]
+```
+
+because there is not an exactly idea how many cluster should be we use the A technique known as the elbow method.
+```{r}
+wss <- (nrow(intention)-1)*sum(apply(intention,2,var))
+for (i in 2:10) {
+  wss[i] <- sum(kmeans(intention,
+                       centers=i)$withinss)
+}
+plot(1:10, wss, type="b", main= "K value", xlab="Number of Clusters",
+     ylab="Within groups sum of squares")
+```
+
+the result of the elbow method looks that the best k value for the analysis is 3 or 4. However, we are using the values of K = 2, 3 and 4 in order to obtain more information about clustering.
+Creating a function to plot the clusters
+```{r}
+#PLOT CLUSTERS FUNCTION
+#in order to plot the cluster, using different variables we apply a function
+#m = x-axis - using the column on online_intention$ + any column that would like 
+#n = y-axis - using the column on online_intention$ + any column that would like 
+#o = colour of graphs - in this case we are using a cluster column as colour
+#p = number of the graphs -  include on the title
+funct_plot <- function(m,n,o,p){
+  legend1 <- table(o)
+  legend_num <- (names(legend1))
+  plot(x = m, y = n, main = paste("Clusters Graph",p), xlab = names(m), 
+       ylab = names(n), col=o)
+  
+  legend("bottomright", legend = names(legend1), fill =(legend_num), title = "Clusters", 
+         col=(legend_num),lty=1:2, cex=0.8,box.lty=0) 
+}
+```
+
+## 2 clusters (all the columns)
+```{r}
+#divide	online shoppers intention	into	two	clusters
+intention_clusters	<-	kmeans(intention_z,	2)
+# exploring the clusters - size, centroids 
+intention_clusters$size
+intention_clusters$centers
+#get the clusters means
+aggregate(intention, by=list(intention_clusters$cluster), FUN = mean)
+#append cluster assignment 
+online_intention <- data.frame(online_intention, intention_clusters$cluster)
+```
+the above information is some of the values that was created by the kmeans algorithm such as the size for each cluster and the centers that giving an idea how are the clusters and what are the distance among them.
+the next graphs show the first cluster with different variables in some of them there is not easy to identify the clusters, although these will be the point of comparison between other cluster. 
+
+the following plots are usisng some of the variables in order to show the clusters in a graph.
+```{r, include=TRUE}
+funct_plot(online_intention$BounceRates, online_intention$ExitRates,
+          intention_clusters$cluster, 1.1) # graph 1
+funct_plot(online_intention$Administrative, online_intention$ExitRates,
+           intention_clusters$cluster, 1.2)# graph 2
+funct_plot(online_intention$ProductRelated, online_intention$ProductRelated_Duration,
+           intention_clusters$cluster, 1.3)# graph 3
+```
+we could see in the graphs, there are some variables that do not have much influence in how were making the clusters. also wue can see that there is one group in the top, the biggest one and inside of this there is another cluster which could be a Traditional Hierarchical Clustering.  
+
+##3 CLUSTERs (all the columns)
+we will apply the analysis with 3 clusters
+```{r}
+#also, we can include in the kmeans function more criterials as following.
+#for instances, centers and nstart
+#we are creating 3 clusters
+intention_clusters2	<-	kmeans(intention_z,	centers = 3, nstart = 25)
+intention_clusters2$size
+intention_clusters2$centers
+#get the clusters means
+aggregate(intention, by=list(intention_clusters2$cluster), FUN = mean)
+#append cluster assignment 
+online_intention <- data.frame(online_intention, intention_clusters2$cluster)
+```
+as previuos analysis, these are the calues of the cluster such as the size for each cluster and the centers that giving an idea how are the cluster and what is the distance among them.
+```{r, include=TRUE}
+#PLOTS
+funct_plot(online_intention$BounceRates, online_intention$ExitRates,
+           intention_clusters2$cluster, 1.4) # graph 4
+funct_plot(online_intention$Administrative, online_intention$ExitRates,
+           intention_clusters2$cluster, 1.5)# graph 5
+funct_plot(online_intention$ProductRelated, online_intention$ProductRelated_Duration,
+           intention_clusters2$cluster, 1.6)# graph 6
+```
+
+##4 CLUSTERs (all the columns)
+we will apply the analysis with 4 clusters
+```{r}
+#we are creating 4 clusters
+intention_clusters3	<-	kmeans(intention_z,	4)
+# exploring the clusters - size, centroids 
+intention_clusters3$size
+intention_clusters3$centers
+#get the clusters means
+aggregate(intention, by=list(intention_clusters2$cluster), FUN = mean)
+#append cluster assignment 
+online_intention <- data.frame(online_intention, intention_clusters2$cluster)
+#PLOTS
+funct_plot(online_intention$BounceRates, online_intention$ExitRates,
+           intention_clusters2$cluster, 1.4) # graph 4
+funct_plot(online_intention$Administrative, online_intention$ExitRates,
+           intention_clusters2$cluster, 1.5)# graph 5
+funct_plot(online_intention$ProductRelated, online_intention$ProductRelated_Duration,
+           intention_clusters2$cluster, 1.6)# graph 6
+```
+
+with 4 cluster is seem that there is not natural gruops in this dataset because the cluster are mix and these produce that clustering.
+
+#SECOND CLUSTER ANALYSIS
+## 2 clusters (without MOnths, VisitorType, Weekend and Revenue columns(categorical))
+```{r}
+#divide	online shoppers intention	into	two	clusters
+intention_clusters4	<-	kmeans(intention_z2,	2)
+# exploring the clusters - size, centroids 
+intention_clusters4$size
+intention_clusters4$centers
+#improving model performance
+funct_plot(online_intention$BounceRates, online_intention$ExitRates,
+           intention_clusters4$cluster, 2.1) # graph 10
+funct_plot(online_intention$Administrative, online_intention$ExitRates,
+           intention_clusters4$cluster, 2.2)# graph 11
+funct_plot(online_intention$ProductRelated, online_intention$ProductRelated_Duration,
+           intention_clusters4$cluster, 2.3)# graph 12
+#get the clusters means
+aggregate(intention, by=list(intention_clusters4$cluster), FUN = mean)
+#append cluster assignment 
+online_intention <- data.frame(online_intention, intention_clusters4$cluster)
+```
+
+## 3 clusters (without MOnths, VisitorType, Weekend and Revenue columns(categorical))
+```{r}
+#divide	online shoppers intention	into	three	clusters
+intention_clusters5	<-	kmeans(intention_z2,	3)
+# exploring the clusters - size, centroids 
+intention_clusters5$size
+intention_clusters5$centers
+#PLOTS
+funct_plot(online_intention$BounceRates, online_intention$ExitRates,
+           intention_clusters5$cluster, 2.4) # graph 13
+funct_plot(online_intention$Administrative, online_intention$ExitRates,
+           intention_clusters5$cluster, 2.5)# graph 14
+funct_plot(online_intention$ProductRelated, online_intention$ProductRelated_Duration,
+           intention_clusters5$cluster, 2.6)# graph 15
+#get the clusters means
+aggregate(intention, by=list(intention_clusters5$cluster), FUN = mean)
+#append cluster assignment 
+online_intention <- data.frame(online_intention, intention_clusters5$cluster)
+```
+
+## 4 clusters (without MOnths, VisitorType, Weekend and Revenue columns(categorical))
+```{r}
+#divide	online shoppers intention	into	four	clusters
+intention_clusters6	<-	kmeans(intention_z2, 4)
+
+# exploring the clusters - size, centroids 
+intention_clusters6$size
+intention_clusters6$centers
+#PLOT
+funct_plot(online_intention$BounceRates, online_intention$ExitRates,
+           intention_clusters6$cluster, 2.7) # graph 16
+funct_plot(online_intention$Administrative, online_intention$ExitRates,
+           intention_clusters6$cluster, 2.8)# graph 17
+funct_plot(online_intention$ProductRelated, online_intention$ProductRelated_Duration,
+           intention_clusters6$cluster, 2.9)# graph 18
+#get the clusters means
+aggregate(intention, by=list(intention_clusters6$cluster), FUN = mean)
+#append cluster assignment 
+online_intention <- data.frame(online_intention, intention_clusters6$cluster)
+```
+
+comparison
+2 clusters
+with all the variables there is not clear the two cluster in the graph 1.1, looks like Traditional Hierarchical Clustering, but using the others graphs look different patterns- againts in the graph 2.1 there is a Partitional Clustering. could be a reason for it, the categorical varaibles such as revenue is used by classification in which there is a two clusters.
+the first cluster analysis in general the clusters are mixed and not easy to identyfied. on the other hands, in the second analysis there are clear division among clusters.
+
+NOTE. the graphs are in two dimension, maybe could be different the visualisation in three or more dimensions.
+
+
+# REFLECTION
+We broke down the tasks between the four of us with each member doing the code for one of the techniques. Tom did kNN, Lee did Decision Trees, Erik did K-means and Reenu did Regression. For the RMarkdown and reflection sections we split the work evenly and all added to these parts.
+
+The K-Nearest Neighbour algorithm finds similar values in a set and classify these into groups based on shared characteristics. We had issues when splitting it into training and test sets. The data was ordered by class, which resulted in the test set containing only records from class 3. This was overcome by using the createDataPartition() function to separate the data. However, this means the training and test sets will likely be different each time, so the results will also be different. This could have been overcome by using a larger dataset, which would have also In using this method we obtained a high degree of accuracy (95%+) in classifying 3 types of Italian wine.
+
+From use the use of the Decision trees we have gathered an informative insight into the usability of the various models. Decision trees are extremely fast at classifying unknown records and provide visualizations that can be easily interpreted by target audiences. Decision trees also allow for the accuracy to be comparable to other classification techniques which ensures that an analyst can find the most accurate results. Our use of decision trees delivered 100% accuracy in classifying mushrooms between poisonous and non-poisonous species.
+
+K-means clustering is a method of cluster analysis which groups records into k clusters based on the nearest mean value of the cluster. It is a form unsupervised, no model. There is no definite value for the number of clusters, so it was determined by the elbow method. With k-means the initial centres for each cluster can be different each time that we used different columns as input in the algorithm, so the pattern of clustering will be different each type.
+
+Regression is used to predict a continuous dependant variable from several independent variables. We decided to merge both wine quality datasets to build a model. During the implementation we discovered different libraries like regclass, leaps, physch and corrplot which helped give a better understanding of regression. Apart from the general analysis Iweliked using Anova with regression to find out the insignificant variable in the model which seems useful in terms of predicting the significance of the regression model.
+
